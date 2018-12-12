@@ -1,0 +1,306 @@
+#!/usr/bin/env bash
+
+# Copyright 2018 Toni de la Fuente
+
+# Prowler is a tool that provides automate auditing and hardening guidance of an
+# AWS account. It is based on AWS-CLI commands.
+
+# Contact the author at https://blyx.com/contact
+# and open issues or ask questions at https://github.com/toniblyx/prowler
+
+# All code is licensed as Apache License 2.0 as specified in
+# each file. You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Prowler - Iron Maiden
+#
+# Walking through the city, looking oh so pretty
+# I've just got to find my way
+# See the ladies flashing
+# All there legs and lashes
+# I've just got to find my way...
+
+OPTRED="[1;31m"
+OPTNORMAL="[0;39m"
+
+# Set the defaults variables
+PROWLER_VERSION=2.0-beta3
+PROWLER_DIR=$(dirname "$0")
+
+REGION=""
+FILTERREGION=""
+MAXITEMS=100
+MONOCHROME=0
+MODE="text"
+SEP=','
+KEEPCREDREPORT=0
+EXITCODE=0
+SCRIPT_START_TIME=$( date -u +"%Y-%m-%dT%H:%M:%S%z" )
+TITLE_ID=""
+TITLE_TEXT="CALLER ERROR - UNSET TITLE"
+
+# Command usage menu
+usage(){
+  echo "
+USAGE:
+      `basename $0` [ -p <profile> -r <region>  -h ]
+  Options:
+      -p <profile>        specify your AWS profile to use (i.e.: default)
+      -r <region>         specify an AWS region to direct API requests to
+                            (i.e.: us-east-1), all regions are checked anyway if the check requires it
+      -c <check_id>       specify a check id, to see all available checks use "-l" option
+                            (i.e.: "check11" for check 1.1 or "extra71" for extra check 71)
+      -g <group_id>       specify a group of checks by id, to see all available group of checks use "-l"
+                            (i.e.: "check3" for entire section 3, "forensics-ready" to test your account is ready for forensic analysis)
+      -f <filterregion>   specify an AWS region to run checks against
+                            (i.e.: us-west-1)
+      -m <maxitems>       specify the maximum number of items to return for long-running requests (default: 100)
+      -M <mode>           output mode: text (default), mono, json, csv (separator is ","; data is on stdout; progress on stderr)
+      -k                  keep the credential report
+      -n                  show check numbers to sort easier
+                            (i.e.: 1.01 instead of 1.1)
+      -l                  list all available checks only (does not perform any check)
+      -e                  exclude group extras
+      -b                  do not print Prowler banner
+      -V                  show version number & exit
+      -h                  this help
+  "
+  exit
+}
+
+while getopts ":hlkp:r:c:g:f:m:M:enbV" OPTION; do
+   case $OPTION in
+     h )
+        usage
+        EXITCODE=1
+        exit $EXITCODE
+        ;;
+     l )
+        PRINTCHECKSONLY=1
+        ;;
+     k )
+        KEEPCREDREPORT=1
+        ;;
+     p )
+        PROFILE=$OPTARG
+        ;;
+     r )
+        REGION_OPT=$OPTARG
+        ;;
+     c )
+        CHECK_ID=$OPTARG
+        ;;
+     g )
+        GROUP_ID_READ=$OPTARG
+        ;;
+     f )
+        FILTERREGION=$OPTARG
+        ;;
+     m )
+        MAXITEMS=$OPTARG
+        ;;
+     M )
+        MODE=$OPTARG
+        ;;
+     n )
+        NUMERAL=1
+        ;;
+     b )
+        BANNER=0
+        ;;
+     e )
+        EXTRAS=1
+        ;;
+     V )
+        echo "Prowler $PROWLER_VERSION"
+        EXITCODE=0
+        exit $EXITCODE
+        ;;
+     : )
+        echo ""
+        echo "$OPTRED ERROR!$OPTNORMAL  -$OPTARG requires an argument"
+        usage
+        EXITCODE=1
+        exit $EXITCODE
+        ;;
+     ? )
+        echo ""
+        echo "$OPTRED ERROR!$OPTNORMAL Invalid option"
+        usage
+        EXITCODE=1
+        exit $EXITCODE
+        ;;
+   esac
+done
+
+. $PROWLER_DIR/include/colors
+. $PROWLER_DIR/include/os_detector
+. $PROWLER_DIR/include/aws_profile_loader
+. $PROWLER_DIR/include/awscli_detector
+. $PROWLER_DIR/include/outputs
+. $PROWLER_DIR/include/csv_header
+. $PROWLER_DIR/include/banner
+. $PROWLER_DIR/include/whoami
+. $PROWLER_DIR/include/credentials_report
+
+# Get a list of all available AWS Regions
+REGIONS=$($AWSCLI ec2 describe-regions --query 'Regions[].RegionName' \
+  --output text \
+  $PROFILE_OPT \
+  --region $REGION \
+  --region-names $FILTERREGION)
+
+# Load all of the groups of checks inside groups folder named as "groupNumber*"
+for group in $(ls $PROWLER_DIR/groups/group[0-9]*|grep -v groupN_sample); do
+	. "$group"
+done
+
+# Load all of the checks inside checks folder named as "check*"
+# this includes also extra checks since they are "check_extraNN"
+for checks in $(ls $PROWLER_DIR/checks/check*|grep -v check_sample); do
+	. "$checks"
+done
+
+# Function to show the title of the check
+# using this way instead of arrays to keep bash3 (osx) and bash4(linux) compatibility
+show_check_title() {
+  local check_id=CHECK_ID_$1
+  local check_title=CHECK_TITLE_$1
+  local check_scored=CHECK_SCORED_$1
+  local check_type=CHECK_TYPE_$1
+  textTitle "${!check_id}" "${!check_title}" "${!check_scored}" "${!check_type}"
+}
+
+# Function to show the title of a group, by numeric id
+show_group_title() {
+	# when csv mode is used, no group tittle is shown
+  if [[ "$MODE" != "csv" ]]; then
+      textTitle "${GROUP_NUMBER[$1]}" "${GROUP_TITLE[$1]}" "NOT_SCORED" "SUPPORT"
+  fi
+}
+
+# Function to execute the check
+execute_check() {
+	# See if this is an alternate name for a check
+	# for example, we might have been passed 1.01 which is another name for 1.1
+  local alternate_name_var=CHECK_ALTERNATE_$1
+  local alternate_name=${!alternate_name_var}
+
+	if [ ${alternate_name} ];then
+		show_check_title ${alternate_name}
+		${alternate_name}
+	else
+    # Check to see if this is a real check
+    local check_id_var=CHECK_ID_$1
+    local check_id=${!check_id_var}
+    if [ ${check_id} ]; then
+		  show_check_title $1
+		  $1
+    else
+      textFail "ERROR! Use a valid check name (i.e. check41 or extra71)";
+      exit $EXITCODE
+    fi
+	fi
+}
+
+# Function to execute all checks in a group
+execute_group() {
+	show_group_title $1
+  # run the checks in the group
+	IFS=',' read -ra CHECKS <<< ${GROUP_CHECKS[$1]}
+	for i in ${CHECKS[@]}; do
+    execute_check $i
+	done
+}
+
+# Function to execute group by name
+execute_group_by_id() {
+  if [ "${GROUP_ID[$1]}" == "group1" ]; then
+    genCredReport
+    saveReport
+  fi
+	for i in "${!GROUP_ID[@]}"; do
+		if [ "${GROUP_ID[$i]}" == "$1" ]; then
+			execute_group $i
+		fi
+	done
+}
+
+# Function to execute all checks in all groups
+execute_all() {
+	for i in "${!GROUP_TITLE[@]}"; do
+    if [ "${GROUP_RUN_BY_DEFAULT[$i]}" == "Y" ]; then
+		  execute_group $i
+    fi
+	done
+}
+
+# Function to show the titles of everything
+show_all_titles() {
+	for i in "${!GROUP_TITLE[@]}"; do
+		show_group_title $i
+		# Display the title of the checks
+		IFS=',' read -ra CHECKS <<< ${GROUP_CHECKS[$i]}
+		for j in ${CHECKS[@]}; do
+			show_check_title $j
+		done
+	done
+}
+
+show_all_group_titles() {
+	for i in "${!GROUP_TITLE[@]}"; do
+		show_group_title $i
+	done
+}
+
+### All functions defined above ... run the workflow
+if [[ $MODE != "csv" ]]; then
+  prowlerBanner
+fi
+
+# List only check tittles
+if [[ $PRINTCHECKSONLY == "1" ]]; then
+  show_all_titles
+  exit $EXITCODE
+fi
+
+# Check that jq is installed for JSON output
+if [[ $MODE == "json" ]]; then
+  . $PROWLER_DIR/include/jq_detector
+fi
+
+# Gather account data / test aws cli connectivity
+getWhoami
+
+# Generate the credential report, regardless of which checks we run
+# so that the checks can safely assume it's available
+genCredReport
+saveReport
+
+# Execute single check if called with -c
+if [[ $CHECK_ID ]];then
+  execute_check $CHECK_ID
+  cleanTemp
+  exit $EXITCODE
+fi
+
+# Execute group of checks if called with -g
+if [[ $GROUP_ID_READ ]];then
+  if [[ " ${GROUP_ID[@]} " =~ " ${GROUP_ID_READ} " ]]; then
+    if [[ $MODE == "csv" ]]; then
+      BANNER=0
+    fi
+    execute_group_by_id $GROUP_ID_READ
+    cleanTemp
+    exit $EXITCODE
+  else
+    textFail "Use a valid check group ID i.e.: group1, extras, forensics-ready, etc."
+    show_all_group_titles
+    exit $EXITCODE
+  fi
+fi
+
+execute_all
+
+cleanTemp
+exit $EXITCODE
