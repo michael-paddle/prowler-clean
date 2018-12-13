@@ -39,9 +39,11 @@ def main(argv):
         if counter_fail == 0:
             allow_ingress = False
             print('we are not allowing it')
+            exit(0)
         else:
             allow_ingress = True
             print('we are allowing it')
+            exit(1)
     except Exception as err:
         print(err) 
 
