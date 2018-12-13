@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# check_rebuild - a check for prowler copyright 2018 Michael De La Rue for a Paddle Hackathon
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+
+CHECK_ID_rebuild902="90.2"
+CHECK_TITLE_rebuild902="[90.2] Validate if cloudwatch can show cloudtrail logs (Not part of CIS benchmark)"
+CHECK_SCORED_rebuild902="NOT_SCORED"
+CHECK_TYPE_rebuild902="REBUILD"
+CHECK_ALTERNATE_check902="rebuild902"
+#
+rebuild902(){
+   # "Description (Not Scored) (Not part of CIS benchmark)"
+   textInfo "Looking for cloudtrail logs on cloudwatch...  "
+   for regx in $REGIONS; do
+       if OUT=$(python3 $PROWLER_DIR/pycheck/check_rebuild902.py --region $regx)
+       then
+         textPass "$regx: cloudwatch can show cloudtrail logs" "$regx"
+       else 
+	 textFail "$regx: no logs to be shown: $OUT" "$regx"
+       fi
+   done
+}
