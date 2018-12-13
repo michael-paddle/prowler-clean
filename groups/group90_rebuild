@@ -15,7 +15,7 @@ GROUP_ID[9]='rebuild'
 GROUP_NUMBER[9]='90.0'
 GROUP_TITLE[9]='General security functionality rebuild  - WORK IN PROGRESS!! - [gdpr] **********'
 GROUP_RUN_BY_DEFAULT[9]='Y' # run it when execute_all is called
-GROUP_CHECKS[9]='rebuild901,rebuild902'
+GROUP_CHECKS[9]='rebuild901,rebuild902,rebuild903'
 
 # Resources:
 # https://d1.awsstatic.com/whitepapers/compliance/GDPR_Compliance_on_AWS.pdf
