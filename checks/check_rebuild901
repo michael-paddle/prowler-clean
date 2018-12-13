@@ -11,17 +11,17 @@
 # CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-CHECK_ID_checkN="90.1"
-CHECK_TITLE_checkN="[90.1] Validate no open access to MySQL port (Not part of CIS benchmark)"
-CHECK_SCORED_checkN="NOT_SCORED"
-CHECK_TYPE_checkN="EXTRA"
-# CHECK_ALTERNATE_checkN="extraN"
+CHECK_ID_rebuild901="90.1"
+CHECK_TITLE_rebuild901="[90.1] Validate no open access to MySQL port (Not part of CIS benchmark)"
+CHECK_SCORED_rebuild901="NOT_SCORED"
+CHECK_TYPE_rebuild901="REBUILD"
+CHECK_ALTERNATE_check901="rebuild901"
 #
 rebuild901(){
    # "Description (Not Scored) (Not part of CIS benchmark)"
    textInfo "Looking for open MySQL Ports in all regions...  "
    for regx in $REGIONS; do
-       if OUT=$(python $PROWLER_DIR/pycheck/check_rebuild901.py --region $regx)
+       if OUT=$(python3 $PROWLER_DIR/pycheck/check_rebuild901.py --region $regx)
        then
          textPass "$regx: no generally open database ports found" "$regx"
        else 

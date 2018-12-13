@@ -26,6 +26,7 @@ def main(argv):
 
     client = boto3.client('ec2', region_name=region)
     try:
+        list_sg = []
         counter_fail = 0
         sg_list = client.describe_security_groups()
         for obj in sg_list['SecurityGroups']:
@@ -35,6 +36,7 @@ def main(argv):
                         for item in line['IpRanges']:
                             if item['CidrIp'] == '0.0.0.0/0':
                                 counter_fail += 1
+                                list_sg.append(obj['GroupName'])
                 
         if counter_fail == 0:
             allow_ingress = False
@@ -42,7 +44,7 @@ def main(argv):
             exit(0)
         else:
             allow_ingress = True
-            print('we are allowing it')
+            print('we are allowing it in groups:', ' '.join(list_sg))
             exit(1)
     except Exception as err:
         print(err) 
