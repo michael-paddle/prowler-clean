@@ -39,15 +39,15 @@ def main(argv):
 
             if count_fails == 0:
                 flow_logging = True
-                print('FLow logs is present for the following VPCs:', ' '.join(list_vpc_pass))
+                print('FLow logs are present for the following VPCs:', ' '.join(list_vpc_pass))
                 exit(0)
             else:
                 flow_logging = False
-                print('FLow logs is not present for the following VPCs:', ' '.join(list_vpc_fail))
+                print('FLow logs are not present for the following VPCs:', ' '.join(list_vpc_fail))
                 exit(1)
         else:
             flow_logging = False
-            print('FLow logs is not present for any VPCs')
+            print('FLow logs are not present for any VPCs')
             exit(1)
 
     except Exception as err:
